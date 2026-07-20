@@ -1,0 +1,16 @@
+config system
+	option hostname 'AX6000-ImmortalWrt'
+	option timezone 'CST-8'
+	option zonename 'Asia/Shanghai'
+	option ttylogin '0'
+	option log_size '64'
+
+config timeserver 'ntp'
+	option enabled '1'
+	list server 'ntp.aliyun.com'
+	list server 'time1.cloud.tencent.com'
+
+config led 'led_status'
+	option name 'STATUS'
+	option sysfs 'blue:status'
+	option trigger 'heartbeat'
