@@ -1,0 +1,7 @@
+config dropbear
+	option PasswordAuth 'on'
+	option RootPasswordAuth 'on'
+	option Port '22'
+	option Interface ''
+	option IdleTimeout '600'
+	option MaxAuthTries '3'
