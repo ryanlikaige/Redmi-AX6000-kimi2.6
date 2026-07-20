@@ -1,0 +1,163 @@
+name: Build ImmortalWrt for AX6000 U-BootMod
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'ImmortalWrt Branch'
+        required: true
+        default: 'openwrt-23.05'
+        type: choice
+        options:
+          - openwrt-23.05
+          - master
+      release:
+        description: 'Create Release'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  REPO_URL: https://github.com/immortalwrt/immortalwrt.git
+  REPO_BRANCH: ${{ github.event.inputs.branch }}
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: configs/ax6000-ubootmod.config
+  FILES_DIR: files
+  PATCHES_DIR: patches
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install -y \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext \
+            gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 \
+            libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev \
+            libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
+            mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python2.7 \
+            python3 python3-pyelftools libpython3-dev qemu-utils rsync scons squashfs-tools \
+            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+
+      - name: Clone ImmortalWrt Source
+        run: |
+          git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
+          cd openwrt
+          echo "src-git helloworld https://github.com/fw876/helloworld.git" >> feeds.conf.default
+          echo "src-git kenzo https://github.com/kenzok8/openwrt-packages.git" >> feeds.conf.default
+          echo "src-git small https://github.com/kenzok8/small.git" >> feeds.conf.default
+
+      - name: Update & Install Feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Load Custom Configuration
+        run: |
+          [ -e $CONFIG_FILE ] && mkdir -p openwrt && cp $CONFIG_FILE openwrt/.config
+          [ -d $FILES_DIR ] && cp -r $FILES_DIR openwrt/files
+          [ -d $PATCHES_DIR ] && cp -r $PATCHES_DIR openwrt/patches
+
+      - name: Download & Apply Patches
+        run: |
+          cd openwrt
+          for patch in patches/*.patch; do
+            [ -f "$patch" ] && patch -p1 < "$patch" || true
+          done
+
+      - name: Generate Configuration
+        run: |
+          cd openwrt
+          make defconfig
+
+      - name: Download Package Sources
+        run: |
+          cd openwrt
+          make download -j$(nproc) || make download -j1 V=s
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Compile Firmware
+        id: compile
+        run: |
+          cd openwrt
+          echo -e "$(nproc) thread compile"
+          make -j$(nproc) || make -j1 V=s
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Organize Output Files
+        if: steps.compile.outputs.status == 'success'
+        run: |
+          cd openwrt/bin/targets/*
+          mkdir -p $GITHUB_WORKSPACE/output
+          cp -f *-sysupgrade.bin $GITHUB_WORKSPACE/output/ 2>/dev/null || true
+          cp -f *-factory.bin $GITHUB_WORKSPACE/output/ 2>/dev/null || true
+          cp -f *.manifest $GITHUB_WORKSPACE/output/ 2>/dev/null || true
+          ls -la $GITHUB_WORKSPACE/output/
+
+      - name: Upload Artifacts
+        if: steps.compile.outputs.status == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-AX6000-${{ github.run_number }}
+          path: output/
+
+      - name: Generate Release Info
+        if: steps.compile.outputs.status == 'success' && github.event.inputs.release == 'true'
+        run: |
+          echo "RELEASE_TAG=$(date +%Y%m%d)-AX6000" >> $GITHUB_ENV
+          echo "RELEASE_NAME=ImmortalWrt AX6000 U-BootMod $(date +%Y-%m-%d)" >> $GITHUB_ENV
+
+      - name: Create Release
+        if: steps.compile.outputs.status == 'success' && github.event.inputs.release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          body: |
+            ## ImmortalWrt for Redmi AX6000 (U-BootMod)
+            
+            ### 编译信息
+            - **分支**: ${{ github.event.inputs.branch }}
+            - **日期**: ${{ env.RELEASE_DATE }}
+            - **Commit**: ${{ github.sha }}
+            
+            ### 默认配置
+            - LuCI 管理地址: `192.168.1.1`
+            - 管理密码: `lkg030418`
+            - SSH 端口: `22` (已开启)
+            - 主题: Argon
+            
+            ### 预装插件
+            - HomeProxy (sing-box 代理管理)
+            - AdGuard Home (广告过滤/DNS)
+            - FRPC (内网穿透)
+            - DDNS (动态域名)
+            
+            ### 刷机说明
+            1. 确保已刷入 U-BootMod
+            2. 进入 U-Boot 恢复模式（按住 Reset 开机）
+            3. 上传 sysupgrade 固件刷入
+            4. 首次启动约 2-3 分钟，请耐心等待
+            
+            ### ⚠️ 注意事项
+            - 首次启动不会自动修改网络/WiFi 配置
+            - 请手动在 LuCI 中配置 WiFi 参数
+            - 建议刷机前备份当前配置
+          files: output/*
+          draft: false
+          prerelease: false
