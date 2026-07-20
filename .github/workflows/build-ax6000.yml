@@ -1,4 +1,4 @@
-name: Build ImmortalWrt v25.12.1 for AX6000 U-BootMod
+name: Build ImmortalWrt v25.12.3 for AX6000 U-BootMod
 
 on:
   workflow_dispatch:
@@ -6,11 +6,11 @@ on:
       branch:
         description: 'ImmortalWrt Branch'
         required: true
-        default: 'master'
+        default: 'openwrt-25.12'
         type: choice
         options:
+          - openwrt-25.12
           - master
-          - openwrt-24.10
       release:
         description: 'Create Release'
         required: false
@@ -19,7 +19,7 @@ on:
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt.git
-  REPO_BRANCH: master
+  REPO_BRANCH: openwrt-25.12
   CONFIG_FILE: configs/ax6000-ubootmod.config
   FILES_DIR: files
   TZ: Asia/Shanghai
@@ -54,6 +54,11 @@ jobs:
         run: |
           git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
           cd openwrt
+          echo "=== ImmortalWrt Version Info ==="
+          cat include/version.mk 2>/dev/null | grep -E "VERSION_NUMBER|VERSION_CODE|VERSION_DIST" || true
+          echo "=== Kernel Version ==="
+          ls target/linux/mediatek/Makefile 2>/dev/null && grep KERNEL target/linux/mediatek/Makefile | head -5 || true
+          echo "=================================="
 
       - name: Update & Install Feeds
         run: |
@@ -97,20 +102,21 @@ jobs:
         if: steps.compile.outputs.status == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt-v25.12.1-AX6000-${{ github.run_number }}
+          name: ImmortalWrt-v25.12.3-AX6000-${{ github.run_number }}
           path: output/
 
       - name: Create Release
         if: steps.compile.outputs.status == 'success' && github.event.inputs.release == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v25.12.1-AX6000-${{ github.run_number }}
-          name: ImmortalWrt v25.12.1 AX6000 U-BootMod $(date +%Y-%m-%d)
+          tag_name: v25.12.3-AX6000-${{ github.run_number }}
+          name: ImmortalWrt v25.12.3 AX6000 U-BootMod $(date +%Y-%m-%d)
           body: |
-            ## ImmortalWrt v25.12.1 for Redmi AX6000 (U-BootMod)
+            ## ImmortalWrt v25.12.3 for Redmi AX6000 (U-BootMod)
             
-            **分支**: master (v25.12.1)
-            **内核**: 6.6 LTS
+            **分支**: openwrt-25.12
+            **内核**: 6.12 LTS
+            **OpenWrt 服务版本**: 25.12.3 (2026-05-07)
             **编译日期**: $(date +%Y-%m-%d)
             
             ### 默认配置
@@ -126,14 +132,14 @@ jobs:
             - DDNS
             
             ### WiFi 配置
-            - 2.4G: `Ryan` / `TangoMoment`
+            - 2.4G: `Ryan` / `TangoMoment` (HE40)
             - 5G: `Ryan_5G` / `TangoMoment` (信道149, HE80)
             
             ### 刷机说明
             1. 确保已刷入 U-BootMod
             2. 按住 Reset 通电进入恢复模式
             3. 上传 sysupgrade 固件
-            4. 首次启动约 3-5 分钟（WiFi初始化）
+            4. 首次启动约 3-5 分钟
             
-            ⚠️ 基于 ImmortalWrt master 分支，内核 6.6
+            ⚠️ 基于 ImmortalWrt 25.12 稳定分支，内核 6.12 LTS
           files: output/*
