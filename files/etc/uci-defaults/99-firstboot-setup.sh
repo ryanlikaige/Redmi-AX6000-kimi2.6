@@ -1,7 +1,7 @@
 #!/bin/sh
 # ============================================
 # AX6000 U-BootMod 首次启动配置
-# ImmortalWrt v25.12.1 (内核6.6)
+# ImmortalWrt v25.12.3 (内核6.12 LTS)
 # ============================================
 
 sleep 5
@@ -52,23 +52,15 @@ uci commit uhttpd
 /etc/init.d/cron enable
 
 # ============================================
-# 2. WiFi 配置（适配 6.6 内核驱动）
+# 2. WiFi 配置 (6.12内核)
 # ============================================
 
-# 等待无线设备就绪
 sleep 3
 
-# 获取无线设备
 RADIO0="radio0"
 RADIO1="radio1"
 
-# 检查设备是否存在
-if ! uci -q get wireless.${RADIO0} >/dev/null 2>&1; then
-    logger -t firstboot "Warning: radio0 not found, waiting..."
-    sleep 5
-fi
-
-# --- 2.4G 配置 ---
+# --- 2.4G ---
 if uci -q get wireless.${RADIO0} >/dev/null 2>&1; then
     uci set wireless.${RADIO0}.disabled='0'
     uci set wireless.${RADIO0}.channel='auto'
@@ -77,10 +69,7 @@ if uci -q get wireless.${RADIO0} >/dev/null 2>&1; then
     uci set wireless.${RADIO0}.country='CN'
     uci set wireless.${RADIO0}.cell_density='0'
     
-    # 删除旧的 2.4G 接口
     uci -q delete wireless.default_${RADIO0}
-    
-    # 创建 2.4G 接口
     uci set wireless.default_${RADIO0}=wifi-iface
     uci set wireless.default_${RADIO0}.device="${RADIO0}"
     uci set wireless.default_${RADIO0}.mode='ap'
@@ -88,10 +77,9 @@ if uci -q get wireless.${RADIO0} >/dev/null 2>&1; then
     uci set wireless.default_${RADIO0}.ssid='Ryan'
     uci set wireless.default_${RADIO0}.encryption='sae-mixed'
     uci set wireless.default_${RADIO0}.key='TangoMoment'
-    uci set wireless.default_${RADIO0}.ieee80211r='0'
 fi
 
-# --- 5G 配置 ---
+# --- 5G ---
 if uci -q get wireless.${RADIO1} >/dev/null 2>&1; then
     uci set wireless.${RADIO1}.disabled='0'
     uci set wireless.${RADIO1}.channel='149'
@@ -100,10 +88,7 @@ if uci -q get wireless.${RADIO1} >/dev/null 2>&1; then
     uci set wireless.${RADIO1}.country='CN'
     uci set wireless.${RADIO1}.cell_density='0'
     
-    # 删除旧的 5G 接口
     uci -q delete wireless.default_${RADIO1}
-    
-    # 创建 5G 接口
     uci set wireless.default_${RADIO1}=wifi-iface
     uci set wireless.default_${RADIO1}.device="${RADIO1}"
     uci set wireless.default_${RADIO1}.mode='ap'
@@ -111,13 +96,10 @@ if uci -q get wireless.${RADIO1} >/dev/null 2>&1; then
     uci set wireless.default_${RADIO1}.ssid='Ryan_5G'
     uci set wireless.default_${RADIO1}.encryption='sae-mixed'
     uci set wireless.default_${RADIO1}.key='TangoMoment'
-    uci set wireless.default_${RADIO1}.ieee80211r='0'
 fi
 
-# 提交 WiFi 配置
 uci commit wireless
 
-# 重启网络
 /etc/init.d/network restart
 sleep 3
 wifi reload
